@@ -150,8 +150,15 @@ export const applyTitle = (
   });
 };
 
+export type WatermarkPosition = 'topLeft' | 'topRight' | 'bottomLeft' | 'bottomRight';
 
-export const applyWatermark = (baseImageSrc: string, watermarkFile: File, opacity: number): Promise<string> => {
+export const applyWatermark = (
+  baseImageSrc: string,
+  watermarkFile: File,
+  opacity: number,
+  position: WatermarkPosition = 'bottomRight',
+  size: number = 0.15 // Default size 15%
+): Promise<string> => {
   return new Promise((resolve, reject) => {
     const baseImage = new Image();
     baseImage.crossOrigin = 'anonymous';
@@ -179,11 +186,36 @@ export const applyWatermark = (baseImageSrc: string, watermarkFile: File, opacit
 
         // Set watermark properties
         ctx.globalAlpha = opacity;
-        const watermarkWidth = 200;
-        const watermarkHeight = 200;
-        const padding = 10;
-        const x = canvas.width - watermarkWidth - padding;
-        const y = canvas.height - watermarkHeight - padding;
+
+        // Calculate watermark dimensions based on size percentage of base image width
+        const watermarkAspectRatio = watermarkImage.naturalWidth / watermarkImage.naturalHeight;
+        const watermarkWidth = baseImage.naturalWidth * size;
+        const watermarkHeight = watermarkWidth / watermarkAspectRatio;
+        
+        const padding = 20;
+
+        let x: number;
+        let y: number;
+
+        switch (position) {
+          case 'topLeft':
+            x = padding;
+            y = padding;
+            break;
+          case 'topRight':
+            x = canvas.width - watermarkWidth - padding;
+            y = padding;
+            break;
+          case 'bottomLeft':
+            x = padding;
+            y = canvas.height - watermarkHeight - padding;
+            break;
+          case 'bottomRight':
+          default:
+            x = canvas.width - watermarkWidth - padding;
+            y = canvas.height - watermarkHeight - padding;
+            break;
+        }
 
         // Draw the watermark
         ctx.drawImage(watermarkImage, x, y, watermarkWidth, watermarkHeight);

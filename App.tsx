@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { enhanceImage, BackgroundOptions } from './services/geminiService';
-import { applyWatermark, applyTitle, SubtitleOptions } from './utils/fileUtils';
+import { applyWatermark, applyTitle, SubtitleOptions, WatermarkPosition } from './utils/fileUtils';
 
 const UploadIcon: React.FC<{className?: string}> = ({className = "w-12 h-12 mb-4 text-gray-500"}) => (
   <svg className={className} aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 20 16">
@@ -33,7 +33,7 @@ const ImageDisplay: React.FC<{ title: string; imageUrl: string | null; children?
   </div>
 );
 
-const fontOptions = [
+const initialFontOptions = [
   { name: 'Be Vietnam Pro', family: "'Be Vietnam Pro', sans-serif" },
   { name: 'Montserrat', family: "'Montserrat', sans-serif" },
   { name: 'Oswald', family: "'Oswald', sans-serif" },
@@ -52,6 +52,22 @@ interface TitlePart {
   color: string;
 }
 
+const PositionIcon: React.FC<{ position: WatermarkPosition }> = ({ position }) => {
+  const positions = {
+    topLeft: { x: '2.5', y: '2.5' },
+    topRight: { x: '9.5', y: '2.5' },
+    bottomLeft: { x: '2.5', y: '9.5' },
+    bottomRight: { x: '9.5', y: '9.5' },
+  };
+  const { x, y } = positions[position];
+  return (
+    <svg className="w-5 h-5 mr-2 flex-shrink-0" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="1" y="1" width="14" height="14" rx="1" stroke="currentColor" strokeWidth="1.5"/>
+      <rect x={x} y={y} width="4" height="4" rx="0.5" fill="currentColor"/>
+    </svg>
+  );
+};
+
 const App: React.FC = () => {
   const [originalFile, setOriginalFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -69,7 +85,8 @@ const App: React.FC = () => {
   const [titleParts, setTitleParts] = useState<TitlePart[]>([
     { id: Date.now(), text: '', color: '#FFFFFF' },
   ]);
-  const [titleFont, setTitleFont] = useState(fontOptions[0].family);
+  const [availableFonts, setAvailableFonts] = useState(initialFontOptions);
+  const [titleFont, setTitleFont] = useState(initialFontOptions[0].family);
   const [addSubtitle, setAddSubtitle] = useState(false);
   const [subtitleText, setSubtitleText] = useState('');
   const [subtitleColor, setSubtitleColor] = useState('#FFFFFF');
@@ -78,6 +95,8 @@ const App: React.FC = () => {
   const [watermarkFile, setWatermarkFile] = useState<File | null>(null);
   const [watermarkPreviewUrl, setWatermarkPreviewUrl] = useState<string | null>(null);
   const [watermarkOpacity, setWatermarkOpacity] = useState(0.2);
+  const [watermarkPosition, setWatermarkPosition] = useState<WatermarkPosition>('bottomRight');
+  const [watermarkSize, setWatermarkSize] = useState(0.15); // 15% of image width
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   
@@ -165,7 +184,43 @@ const App: React.FC = () => {
   const removeTitlePart = (id: number) => {
     setTitleParts(currentParts => currentParts.filter(part => part.id !== id));
   };
+  
+  const handleFontFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
 
+    const fontFamilyName = file.name.replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9]/g, '');
+    const familyIdentifier = `'${fontFamilyName}'`;
+
+    if (availableFonts.some(font => font.family === familyIdentifier)) {
+        setTitleFont(familyIdentifier);
+        return;
+    }
+
+    try {
+        const arrayBuffer = await file.arrayBuffer();
+        const fontFace = new FontFace(fontFamilyName, arrayBuffer);
+        const loadedFace = await fontFace.load();
+        
+        document.fonts.add(loadedFace);
+
+        const newFontOption = {
+            name: `${file.name.split('.').slice(0,-1).join('.')} (Tải lên)`,
+            family: familyIdentifier
+        };
+
+        setAvailableFonts(prevFonts => [...prevFonts, newFontOption]);
+        setTitleFont(newFontOption.family);
+        
+    } catch (err) {
+        console.error("Font loading error:", err);
+        setError("Không thể tải tệp font chữ. Vui lòng chọn một tệp hợp lệ (.ttf, .otf, .woff).");
+    } finally {
+        if (event.target) {
+            event.target.value = '';
+        }
+    }
+  };
 
   const handleEnhanceClick = useCallback(async () => {
     if (!originalFile || isLoading) return;
@@ -212,7 +267,7 @@ const App: React.FC = () => {
       }
 
       if (addWatermark && watermarkFile) {
-        finalImageUrl = await applyWatermark(finalImageUrl, watermarkFile, watermarkOpacity);
+        finalImageUrl = await applyWatermark(finalImageUrl, watermarkFile, watermarkOpacity, watermarkPosition, watermarkSize);
       }
 
       setEnhancedImageUrl(finalImageUrl);
@@ -222,7 +277,7 @@ const App: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [originalFile, isLoading, backgroundStyle, color1, color2, backgroundImageFile, addTitle, titleParts, titleFont, addSubtitle, subtitleText, subtitleColor, addWatermark, watermarkFile, watermarkOpacity]);
+  }, [originalFile, isLoading, backgroundStyle, color1, color2, backgroundImageFile, addTitle, titleParts, titleFont, addSubtitle, subtitleText, subtitleColor, addWatermark, watermarkFile, watermarkOpacity, watermarkPosition, watermarkSize]);
 
   const handleDownload = () => {
     if (!enhancedImageUrl) return;
@@ -253,6 +308,14 @@ const App: React.FC = () => {
     { id: 'blur', label: 'Làm Mờ Nền Gốc' },
     { id: 'upload', label: 'Tải Lên Nền' },
   ];
+  
+  const watermarkPositionOptions: { pos: WatermarkPosition, label: string }[] = [
+    { pos: 'topLeft', label: 'Trên Trái' },
+    { pos: 'topRight', label: 'Trên Phải' },
+    { pos: 'bottomLeft', label: 'Dưới Trái' },
+    { pos: 'bottomRight', label: 'Dưới Phải' }
+  ];
+
 
   return (
     <div className="min-h-screen bg-gray-900 text-gray-100 flex flex-col items-center p-4 sm:p-6 md:p-8">
@@ -385,21 +448,30 @@ const App: React.FC = () => {
 
                     {addTitle && (
                          <div className="mt-2 w-full max-w-xl flex flex-col items-center gap-4">
-                            <div className="w-full">
-                                <label htmlFor="font-select" className="block mb-2 text-sm font-medium text-gray-300">Chọn Font Chữ:</label>
-                                <select
-                                    id="font-select"
-                                    value={titleFont}
-                                    onChange={(e) => setTitleFont(e.target.value)}
-                                    className="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-purple-500 focus:border-purple-500 block w-full p-2.5"
-                                >
-                                    {fontOptions.map(font => (
-                                        <option key={font.name} value={font.family} style={{ fontFamily: font.family }}>
-                                            {font.name}
-                                        </option>
-                                    ))}
-                                </select>
+                            <div className="w-full flex items-end gap-2">
+                                <div className="flex-grow">
+                                    <label htmlFor="font-select" className="block mb-2 text-sm font-medium text-gray-300">Chọn Font Chữ:</label>
+                                    <select
+                                        id="font-select"
+                                        value={titleFont}
+                                        onChange={(e) => setTitleFont(e.target.value)}
+                                        className="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-purple-500 focus:border-purple-500 block w-full p-2.5"
+                                    >
+                                        {availableFonts.map(font => (
+                                            <option key={font.name} value={font.family} style={{ fontFamily: font.family }}>
+                                                {font.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label htmlFor="font-upload" className="cursor-pointer bg-gray-600 hover:bg-gray-500 text-white font-semibold py-2 px-4 rounded-lg transition-colors flex items-center justify-center h-[42px]">
+                                        Tải Font Lên
+                                    </label>
+                                    <input id="font-upload" type="file" className="hidden" accept=".ttf,.otf,.woff,.woff2" onChange={handleFontFileChange} />
+                                </div>
                             </div>
+
 
                             <div className="w-full space-y-3">
                               {titleParts.map((part, index) => (
@@ -499,18 +571,18 @@ const App: React.FC = () => {
                     </div>
 
                     {addWatermark && (
-                        <div className="mt-2 flex flex-col items-center transition-all duration-300 w-full max-w-md">
+                        <div className="mt-2 flex flex-col items-center transition-all duration-300 w-full max-w-md gap-4">
                             <label htmlFor="watermark-upload" className="cursor-pointer bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg transition-colors">
                                 Chọn Ảnh Watermark
                             </label>
                             <input id="watermark-upload" type="file" className="hidden" accept="image/png, image/jpeg, image/webp" onChange={handleWatermarkFileChange} />
                             {watermarkPreviewUrl && (
-                                <div className="mt-4">
+                                <div className="mt-2">
                                     <p className="text-sm text-gray-400 mb-2">Xem trước watermark:</p>
                                     <img src={watermarkPreviewUrl} alt="Watermark Preview" className="w-24 h-24 object-contain rounded-lg border-2 border-gray-600 bg-gray-900/50 p-1" />
                                 </div>
                             )}
-                             <div className="mt-4 w-full">
+                             <div className="w-full">
                                 <label htmlFor="watermark-opacity" className="block mb-2 text-sm font-medium text-gray-300">
                                     Độ trong suốt: {Math.round(watermarkOpacity * 100)}%
                                 </label>
@@ -525,6 +597,42 @@ const App: React.FC = () => {
                                     className="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer"
                                     aria-label="Điều chỉnh độ trong suốt của watermark"
                                 />
+                            </div>
+                            
+                             <div className="w-full">
+                                <label htmlFor="watermark-size" className="block mb-2 text-sm font-medium text-gray-300">
+                                    Kích thước: {Math.round(watermarkSize * 100)}%
+                                </label>
+                                <input
+                                    id="watermark-size"
+                                    type="range"
+                                    min="0.05"
+                                    max="0.5"
+                                    step="0.01"
+                                    value={watermarkSize}
+                                    onChange={(e) => setWatermarkSize(parseFloat(e.target.value))}
+                                    className="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer"
+                                    aria-label="Điều chỉnh kích thước của watermark"
+                                />
+                            </div>
+
+                             <div className="w-full">
+                                <label className="block mb-3 text-sm font-medium text-gray-300 text-center">Vị trí Watermark</label>
+                                <div className="grid grid-cols-2 gap-3">
+                                    {watermarkPositionOptions.map(({ pos, label }) => (
+                                        <button
+                                            key={pos}
+                                            onClick={() => setWatermarkPosition(pos)}
+                                            className={`flex items-center justify-center px-4 py-2 rounded-lg font-semibold transition-all duration-200 text-sm ${
+                                                watermarkPosition === pos ? 'bg-purple-600 text-white shadow-lg' : 'bg-gray-700 hover:bg-gray-600'
+                                            }`}
+                                            aria-label={`Đặt watermark ở vị trí ${label}`}
+                                        >
+                                            <PositionIcon position={pos} />
+                                            {label}
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
                         </div>
                     )}
