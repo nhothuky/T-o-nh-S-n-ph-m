@@ -16,7 +16,7 @@ export interface BackgroundOptions {
   backgroundImage?: File | null;
 }
 
-const generatePrompt = (options: BackgroundOptions): string => {
+const generatePrompt = (options: BackgroundOptions, aspectRatio: string): string => {
   let backgroundInstruction = '';
   switch (options.style) {
     case 'solid':
@@ -36,14 +36,14 @@ const generatePrompt = (options: BackgroundOptions): string => {
       backgroundInstruction = 'sử dụng một nền gradient màu xanh ngọc sạch sẽ, chuyên nghiệp';
       break;
   }
-  // Simplified and more direct prompt to improve reliability
-  return `Chỉnh sửa ảnh sản phẩm này. Giữ nguyên sản phẩm và góc nhìn. Thay thế nền theo hướng dẫn sau: ${backgroundInstruction}. Cải thiện ánh sáng để trông chuyên nghiệp như chụp trong studio, thêm bóng đổ và phản chiếu nhẹ nhàng để sản phẩm trông chân thực. Nâng cao chất lượng tổng thể của hình ảnh.`;
+  
+  return `Chỉnh sửa ảnh sản phẩm này. Giữ nguyên sản phẩm và góc nhìn. Thay thế nền theo hướng dẫn sau: ${backgroundInstruction}. Cải thiện ánh sáng để trông chuyên nghiệp như chụp trong studio, thêm bóng đổ và phản chiếu nhẹ nhàng để sản phẩm trông chân thực. Nâng cao chất lượng tổng thể của hình ảnh. Xuất ảnh với tỷ lệ khung hình ${aspectRatio}.`;
 };
 
-export const enhanceImage = async (file: File, options: BackgroundOptions): Promise<string> => {
+export const enhanceImage = async (file: File, options: BackgroundOptions, aspectRatio: string): Promise<string> => {
   try {
     const { base64Data: productBase64, mimeType: productMimeType } = await fileToBase64(file);
-    const prompt = generatePrompt(options);
+    const prompt = generatePrompt(options, aspectRatio);
 
     // For image editing models, image parts should come before the text prompt.
     const parts: ({ text: string } | { inlineData: { data: string; mimeType: string } })[] = [

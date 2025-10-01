@@ -26,7 +26,8 @@ export const applyTitle = (
   baseImageSrc: string,
   titleParts: Array<{ text: string; color: string }>,
   fontFamily: string,
-  subtitleOptions?: SubtitleOptions
+  subtitleOptions: SubtitleOptions | undefined,
+  aspectRatio: string
 ): Promise<string> => {
   return new Promise((resolve, reject) => {
     const baseImage = new Image();
@@ -40,108 +41,133 @@ export const applyTitle = (
         return reject(new Error('Could not get canvas context.'));
       }
 
-      canvas.width = baseImage.naturalWidth;
-      canvas.height = baseImage.naturalHeight;
-      ctx.drawImage(baseImage, 0, 0);
+      // --- START: ASPECT RATIO ENFORCEMENT LOGIC ---
+      const [targetW, targetH] = aspectRatio.split(':').map(Number);
+      if (!targetW || !targetH) {
+          return reject(new Error('Invalid aspect ratio format.'));
+      }
+      const targetRatio = targetW / targetH;
+      const originalWidth = baseImage.naturalWidth;
+      const originalHeight = baseImage.naturalHeight;
+      const originalRatio = originalWidth / originalHeight;
+
+      let sourceX = 0;
+      let sourceY = 0;
+      let sourceWidth = originalWidth;
+      let sourceHeight = originalHeight;
+
+      if (originalRatio > targetRatio) {
+        // Original image is wider than target, crop sides (cinematic style)
+        sourceWidth = originalHeight * targetRatio;
+        sourceX = (originalWidth - sourceWidth) / 2;
+      } else if (originalRatio < targetRatio) {
+        // Original image is taller than target, crop top/bottom
+        sourceHeight = originalWidth / targetRatio;
+        sourceY = (originalHeight - sourceHeight) / 2;
+      }
+      
+      // Set canvas to the final cropped dimensions
+      canvas.width = sourceWidth;
+      canvas.height = sourceHeight;
+
+      // Draw the cropped portion of the original image onto the canvas
+      ctx.drawImage(
+        baseImage,
+        sourceX,
+        sourceY,
+        sourceWidth,
+        sourceHeight,
+        0,
+        0,
+        canvas.width,
+        canvas.height
+      );
+      // --- END: ASPECT RATIO ENFORCEMENT LOGIC ---
 
       const validParts = titleParts.filter(p => p.text && p.text.trim() !== '');
-      if (validParts.length === 0) {
-        resolve(baseImageSrc);
+      const hasTitle = validParts.length > 0;
+      const hasSubtitle = subtitleOptions && subtitleOptions.text.trim() !== '';
+
+      if (!hasTitle && !hasSubtitle) {
+        // If no text, just resolve with the cropped image.
+        resolve(canvas.toDataURL('image/png'));
         return;
       }
       
-      const fullText = validParts.map(p => p.text.toUpperCase()).join(' ');
-
-      const maxWidth = canvas.width - 80;
-      let fontSize = 200;
+      let titleHeight = 0;
+      let titleFontSize = 0;
       
-      // Calculate the optimal font size to fit the full text
-      while (fontSize > 10) {
-        // Use a heavier font weight for a bolder look
-        ctx.font = `800 ${fontSize}px ${fontFamily}`;
-        if (ctx.measureText(fullText).width <= maxWidth) {
-          break;
+      if (hasTitle) {
+        const fullText = validParts.map(p => p.text.toUpperCase()).join(' ');
+        const maxWidth = canvas.width - 80;
+        let fontSize = 200;
+        while (fontSize > 10) {
+            ctx.font = `800 ${fontSize}px ${fontFamily}`;
+            if (ctx.measureText(fullText).width <= maxWidth) {
+                break;
+            }
+            fontSize--;
         }
-        fontSize--;
+        titleFontSize = fontSize;
+        titleHeight = titleFontSize;
+        
+        ctx.font = `800 ${titleFontSize}px ${fontFamily}`;
+        ctx.textBaseline = 'top';
+        const totalWidth = ctx.measureText(fullText).width;
+        let currentX = (canvas.width - totalWidth) / 2;
+        const y = 25;
+
+        validParts.forEach((part, index) => {
+            const partText = part.text.toUpperCase();
+            
+            const depth = Math.max(2, Math.ceil(titleFontSize / 35));
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+            for (let i = 1; i <= depth; i++) {
+              ctx.fillText(partText, currentX + i, y + i);
+            }
+            
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.75)';
+            ctx.shadowBlur = Math.max(5, titleFontSize / 15);
+            const shadowOffset = Math.max(2, titleFontSize / 40);
+            ctx.shadowOffsetX = shadowOffset;
+            ctx.shadowOffsetY = shadowOffset;
+            
+            ctx.fillStyle = part.color;
+            ctx.fillText(partText, currentX, y);
+            
+            ctx.shadowColor = 'transparent';
+            ctx.shadowBlur = 0;
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 0;
+
+            currentX += ctx.measureText(partText).width;
+            if (index < validParts.length - 1) {
+              currentX += ctx.measureText(' ').width;
+            }
+        });
       }
-
-      // Set the final font style
-      ctx.font = `800 ${fontSize}px ${fontFamily}`;
-      ctx.textBaseline = 'top';
       
-      // Calculate starting position to center the entire line
-      const totalWidth = ctx.measureText(fullText).width;
-      let currentX = (canvas.width - totalWidth) / 2;
-      const y = 25;
-
-      // Draw each part sequentially to build the full title
-      validParts.forEach((part, index) => {
-        const partText = part.text.toUpperCase();
-        
-        // 3D Block Effect
-        // Calculate the depth of the 3D effect based on the font size.
-        const depth = Math.max(2, Math.ceil(fontSize / 35));
-
-        // Draw the extrusion/shadow layer multiple times, offset diagonally.
-        // This creates the illusion of depth.
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-        for (let i = 1; i <= depth; i++) {
-          ctx.fillText(partText, currentX + i, y + i);
-        }
-        
-        // Add a soft drop shadow for better contrast and pop
-        ctx.shadowColor = 'rgba(0, 0, 0, 0.75)';
-        ctx.shadowBlur = Math.max(5, fontSize / 15); // Scale blur with font size
-        const shadowOffset = Math.max(2, fontSize / 40); // Scale offset
-        ctx.shadowOffsetX = shadowOffset;
-        ctx.shadowOffsetY = shadowOffset;
-        
-        // Draw the main, top layer of the text with the user-selected color.
-        ctx.fillStyle = part.color;
-        ctx.fillText(partText, currentX, y);
-        
-        // Reset shadow properties to avoid affecting other elements
-        ctx.shadowColor = 'transparent';
-        ctx.shadowBlur = 0;
-        ctx.shadowOffsetX = 0;
-        ctx.shadowOffsetY = 0;
-
-        // Move the horizontal position for the next part of the title
-        currentX += ctx.measureText(partText).width;
-        
-        // Add space width if it's not the last part
-        if (index < validParts.length - 1) {
-          currentX += ctx.measureText(' ').width;
-        }
-      });
-      
-      // Draw subtitle if provided
-      if (subtitleOptions && subtitleOptions.text.trim() !== '') {
+      if (hasSubtitle) {
           const subtitleText = subtitleOptions.text;
-          const subtitleFontSize = Math.max(20, fontSize * 0.4); // Ensure a minimum size
-          ctx.font = `600 ${subtitleFontSize}px ${fontFamily}`; // Slightly less bold
+          const baseSize = hasTitle ? titleFontSize : canvas.height * 0.1;
+          const subtitleFontSize = Math.max(20, baseSize * 0.4);
+          ctx.font = `600 ${subtitleFontSize}px ${fontFamily}`;
           
           const subtitleWidth = ctx.measureText(subtitleText).width;
           const subtitleX = (canvas.width - subtitleWidth) / 2;
-          // Position it below the main title with some padding
-          const subtitleY = y + fontSize + (fontSize * 0.1);
+          const subtitleY = 25 + (hasTitle ? titleHeight + (titleHeight * 0.1) : 0);
 
-          // Add a simple, clean shadow for readability
           ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
           ctx.shadowBlur = 5;
           ctx.shadowOffsetX = 2;
           ctx.shadowOffsetY = 2;
-
           ctx.fillStyle = subtitleOptions.color;
           ctx.fillText(subtitleText, subtitleX, subtitleY);
-
-          // Reset shadow again
           ctx.shadowColor = 'transparent';
           ctx.shadowBlur = 0;
           ctx.shadowOffsetX = 0;
           ctx.shadowOffsetY = 0;
       }
-
 
       resolve(canvas.toDataURL('image/png'));
     };

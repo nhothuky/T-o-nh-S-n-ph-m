@@ -9,652 +9,435 @@ const UploadIcon: React.FC<{className?: string}> = ({className = "w-12 h-12 mb-4
 );
 
 const DownloadIcon: React.FC = () => (
-    <svg className="w-6 h-6 mr-2" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-        <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
-    </svg>
+    <svg className="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
 );
 
-const Spinner: React.FC = () => (
-  <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-purple-500"></div>
+const LoadingSpinner: React.FC = () => (
+  <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+  </svg>
 );
 
-const ImageDisplay: React.FC<{ title: string; imageUrl: string | null; children?: React.ReactNode; isLoading?: boolean }> = ({ title, imageUrl, children, isLoading }) => (
-  <div className="bg-gray-800 rounded-lg p-6 flex flex-col items-center justify-center w-full h-full min-h-[300px] md:min-h-[512px]">
-    <h2 className="text-xl font-bold mb-4 text-gray-300">{title}</h2>
-    <div className="w-full h-full flex items-center justify-center aspect-square bg-gray-900/50 rounded-md overflow-hidden">
-      {isLoading ? (
-        <Spinner />
-      ) : imageUrl ? (
-        <img src={imageUrl} alt={title} className="w-full h-full object-contain" />
-      ) : (
-        children
-      )}
-    </div>
-  </div>
-);
-
-const initialFontOptions = [
-  { name: 'Be Vietnam Pro', family: "'Be Vietnam Pro', sans-serif" },
-  { name: 'Montserrat', family: "'Montserrat', sans-serif" },
-  { name: 'Oswald', family: "'Oswald', sans-serif" },
-  { name: 'Pacifico', family: "'Pacifico', cursive" },
-  { name: 'Playfair Display', family: "'Playfair Display', serif" },
-  { name: 'Roboto', family: "'Roboto', sans-serif" },
-  { name: 'Open Sans', family: "'Open Sans', sans-serif" },
-  { name: 'Noto Serif', family: "'Noto Serif', serif" },
-  { name: 'Source Sans Pro', family: "'Source Sans Pro', sans-serif" },
-  { name: 'Arial', family: "Arial, sans-serif" },
-];
-
-interface TitlePart {
-  id: number;
-  text: string;
-  color: string;
+interface UsageStats {
+  today: number;
+  yesterday: number;
+  last7Days: number;
+  thisMonth: number;
+  total: number;
 }
 
-const PositionIcon: React.FC<{ position: WatermarkPosition }> = ({ position }) => {
-  const positions = {
-    topLeft: { x: '2.5', y: '2.5' },
-    topRight: { x: '9.5', y: '2.5' },
-    bottomLeft: { x: '2.5', y: '9.5' },
-    bottomRight: { x: '9.5', y: '9.5' },
-  };
-  const { x, y } = positions[position];
-  return (
-    <svg className="w-5 h-5 mr-2 flex-shrink-0" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <rect x="1" y="1" width="14" height="14" rx="1" stroke="currentColor" strokeWidth="1.5"/>
-      <rect x={x} y={y} width="4" height="4" rx="0.5" fill="currentColor"/>
-    </svg>
-  );
+const getISODateString = (date: Date): string => {
+    const offset = date.getTimezoneOffset();
+    const adjustedDate = new Date(date.getTime() - (offset * 60 * 1000));
+    return adjustedDate.toISOString().split('T')[0];
 };
 
 const App: React.FC = () => {
-  const [originalFile, setOriginalFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [enhancedImageUrl, setEnhancedImageUrl] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const [backgroundStyle, setBackgroundStyle] = useState<BackgroundOptions['style']>('default');
-  const [color1, setColor1] = useState('#4ade80'); // Green-400
-  const [color2, setColor2] = useState('#3b82f6'); // Blue-500
+  const [imageFile, setImageFile] = useState<File | null>(null);
   const [backgroundImageFile, setBackgroundImageFile] = useState<File | null>(null);
-  const [backgroundPreviewUrl, setBackgroundPreviewUrl] = useState<string | null>(null);
+  const [watermarkFile, setWatermarkFile] = useState<File | null>(null);
+  const [enhancedImage, setEnhancedImage] = useState<string | null>(null);
+  const [finalImage, setFinalImage] = useState<string | null>(null);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [loadingMessage, setLoadingMessage] = useState<string>('');
+  const [error, setError] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState<boolean>(false);
+  
+  const [backgroundOptions, setBackgroundOptions] = useState<BackgroundOptions>({
+    style: 'default',
+    color1: '#4ade80',
+    color2: '#3b82f6'
+  });
+  
+  const [aspectRatio, setAspectRatio] = useState<string>('1:1');
 
-  const [addTitle, setAddTitle] = useState(false);
-  const [titleParts, setTitleParts] = useState<TitlePart[]>([
-    { id: Date.now(), text: '', color: '#FFFFFF' },
-  ]);
-  const [availableFonts, setAvailableFonts] = useState(initialFontOptions);
-  const [titleFont, setTitleFont] = useState(initialFontOptions[0].family);
-  const [addSubtitle, setAddSubtitle] = useState(false);
+  const [titlePart1, setTitlePart1] = useState('');
+  const [titleColor1, setTitleColor1] = useState('#FFFFFF');
+  const [titlePart2, setTitlePart2] = useState('');
+  const [titleColor2, setTitleColor2] = useState('#FFD700');
   const [subtitleText, setSubtitleText] = useState('');
   const [subtitleColor, setSubtitleColor] = useState('#FFFFFF');
+  const [fontFamily, setFontFamily] = useState('Oswald');
 
-  const [addWatermark, setAddWatermark] = useState(false);
-  const [watermarkFile, setWatermarkFile] = useState<File | null>(null);
-  const [watermarkPreviewUrl, setWatermarkPreviewUrl] = useState<string | null>(null);
-  const [watermarkOpacity, setWatermarkOpacity] = useState(0.2);
+  const [watermarkOpacity, setWatermarkOpacity] = useState(0.5);
   const [watermarkPosition, setWatermarkPosition] = useState<WatermarkPosition>('bottomRight');
-  const [watermarkSize, setWatermarkSize] = useState(0.15); // 15% of image width
-
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [watermarkSize, setWatermarkSize] = useState(0.15);
   
-  useEffect(() => {
-    return () => {
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
-      if (backgroundPreviewUrl) URL.revokeObjectURL(backgroundPreviewUrl);
-      if (watermarkPreviewUrl) URL.revokeObjectURL(watermarkPreviewUrl);
+  const finalImageRef = useRef<HTMLImageElement>(null);
+
+  const [usageStats, setUsageStats] = useState<UsageStats>({ today: 0, yesterday: 0, last7Days: 0, thisMonth: 0, total: 0 });
+
+  const calculateStats = useCallback((data: any): UsageStats => {
+    const dailyCounts = data?.dailyCounts || {};
+    const total = data?.total || 0;
+
+    const now = new Date();
+    const todayStr = getISODateString(now);
+
+    const yesterday = new Date();
+    yesterday.setDate(now.getDate() - 1);
+    const yesterdayStr = getISODateString(yesterday);
+
+    let last7DaysCount = 0;
+    for (let i = 0; i < 7; i++) {
+        const d = new Date();
+        d.setDate(now.getDate() - i);
+        last7DaysCount += dailyCounts[getISODateString(d)] || 0;
+    }
+
+    let thisMonthCount = 0;
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+    for (const dateStr in dailyCounts) {
+        const [year, month] = dateStr.split('-').map(Number);
+        if (year === currentYear && (month - 1) === currentMonth) {
+            thisMonthCount += dailyCounts[dateStr];
+        }
+    }
+
+    return {
+        today: dailyCounts[todayStr] || 0,
+        yesterday: dailyCounts[yesterdayStr] || 0,
+        last7Days: last7DaysCount,
+        thisMonth: thisMonthCount,
+        total: total,
     };
-  }, [previewUrl, backgroundPreviewUrl, watermarkPreviewUrl]);
+  }, []);
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      if (!file.type.startsWith('image/')) {
-        setError('Vui lòng chọn một tệp hình ảnh.');
-        return;
+  useEffect(() => {
+    const storedStatsRaw = localStorage.getItem('vongtinhImageEnhancerStats');
+    let storedStats: any = {};
+    if (storedStatsRaw) {
+        try {
+            storedStats = JSON.parse(storedStatsRaw);
+            // Migration logic for old structure
+            if (storedStats.hasOwnProperty('today') && storedStats.hasOwnProperty('total') && !storedStats.hasOwnProperty('dailyCounts')) {
+                const todayDate = storedStats.today.date;
+                const todayCount = storedStats.today.count;
+                const todayDateObj = new Date().toISOString().split('T')[0];
+
+                const newDailyCounts = {};
+                if (todayDate === todayDateObj) {
+                  newDailyCounts[todayDate] = todayCount;
+                }
+
+                storedStats = {
+                    total: storedStats.total,
+                    dailyCounts: newDailyCounts
+                }
+                localStorage.setItem('vongtinhImageEnhancerStats', JSON.stringify(storedStats));
+            }
+
+        } catch (e) {
+            console.error("Failed to parse usage stats.", e);
+            localStorage.removeItem('vongtinhImageEnhancerStats');
+        }
+    }
+    setUsageStats(calculateStats(storedStats));
+  }, [calculateStats]);
+  
+  const incrementUsage = useCallback(() => {
+      const storedStatsRaw = localStorage.getItem('vongtinhImageEnhancerStats');
+      let currentStats: { total: number; dailyCounts: { [key: string]: number } } = { total: 0, dailyCounts: {} };
+       if (storedStatsRaw) {
+          try {
+              currentStats = JSON.parse(storedStatsRaw);
+              if (!currentStats.dailyCounts) currentStats.dailyCounts = {};
+          } catch (e) {
+               console.error("Failed to parse stats on increment, starting fresh.", e);
+          }
       }
-      setOriginalFile(file);
-      setEnhancedImageUrl(null);
+  
+      const todayStr = getISODateString(new Date());
+  
+      const newTotal = (currentStats.total || 0) + 1;
+      const newDailyCounts = {
+          ...currentStats.dailyCounts,
+          [todayStr]: ((currentStats.dailyCounts[todayStr] || 0) + 1)
+      };
+      
+      const newStatsToStore = {
+        total: newTotal,
+        dailyCounts: newDailyCounts
+      };
+  
+      localStorage.setItem('vongtinhImageEnhancerStats', JSON.stringify(newStatsToStore));
+      setUsageStats(calculateStats(newStatsToStore));
+  }, [calculateStats]);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setImageFile(e.target.files[0]);
+      setEnhancedImage(null);
+      setFinalImage(null);
       setError(null);
-      if (previewUrl) {
-        URL.revokeObjectURL(previewUrl);
+    }
+  };
+
+  const handleDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      if(e.dataTransfer.files[0].type.startsWith('image/')) {
+        setImageFile(e.dataTransfer.files[0]);
+        setEnhancedImage(null);
+        setFinalImage(null);
+        setError(null);
+      } else {
+        setError("Vui lòng chỉ tải lên tệp hình ảnh.");
       }
-      setPreviewUrl(URL.createObjectURL(file));
     }
-     // Reset the file input so the user can select the same file again if they want
-     if (event.target) {
-        event.target.value = '';
-    }
-  };
+  }, []);
 
-  const triggerFileUpload = () => {
-    fileInputRef.current?.click();
-  };
-
-  const handleBackgroundFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-        if (!file.type.startsWith('image/')) {
-            setError('Vui lòng chọn một tệp hình ảnh cho nền.');
-            return;
-        }
-        setBackgroundImageFile(file);
-        setError(null);
-        if (backgroundPreviewUrl) {
-            URL.revokeObjectURL(backgroundPreviewUrl);
-        }
-        setBackgroundPreviewUrl(URL.createObjectURL(file));
+  const handleDragEvents = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === 'dragenter' || e.type === 'dragover') {
+      setDragOver(true);
+    } else if (e.type === 'dragleave') {
+      setDragOver(false);
     }
   };
 
-  const handleWatermarkFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-        if (!file.type.startsWith('image/')) {
-            setError('Vui lòng chọn một tệp hình ảnh cho watermark.');
-            return;
-        }
-        setWatermarkFile(file);
-        setError(null);
-        if (watermarkPreviewUrl) {
-            URL.revokeObjectURL(watermarkPreviewUrl);
-        }
-        setWatermarkPreviewUrl(URL.createObjectURL(file));
-    }
-  };
-  
-  const handleTitlePartChange = (id: number, field: 'text' | 'color', value: string) => {
-    setTitleParts(currentParts =>
-      currentParts.map(part =>
-        part.id === id ? { ...part, [field]: value } : part
-      )
-    );
-  };
+  const processImageFinalization = useCallback(async () => {
+    if (!enhancedImage) return;
+    setLoadingMessage("Áp dụng tiêu đề và watermark...");
+    let imageToProcess = enhancedImage;
 
-  const addTitlePart = () => {
-    const randomColor = '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0');
-    setTitleParts(currentParts => [
-      ...currentParts,
-      { id: Date.now(), text: '', color: randomColor }
-    ]);
-  };
+    const titleParts = [
+        { text: titlePart1, color: titleColor1 },
+        { text: titlePart2, color: titleColor2 },
+    ];
+    const subtitleOptions: SubtitleOptions = { text: subtitleText, color: subtitleColor };
 
-  const removeTitlePart = (id: number) => {
-    setTitleParts(currentParts => currentParts.filter(part => part.id !== id));
-  };
-  
-  const handleFontFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    const fontFamilyName = file.name.replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9]/g, '');
-    const familyIdentifier = `'${fontFamilyName}'`;
-
-    if (availableFonts.some(font => font.family === familyIdentifier)) {
-        setTitleFont(familyIdentifier);
-        return;
-    }
-
-    try {
-        const arrayBuffer = await file.arrayBuffer();
-        const fontFace = new FontFace(fontFamilyName, arrayBuffer);
-        const loadedFace = await fontFace.load();
-        
-        document.fonts.add(loadedFace);
-
-        const newFontOption = {
-            name: `${file.name.split('.').slice(0,-1).join('.')} (Tải lên)`,
-            family: familyIdentifier
-        };
-
-        setAvailableFonts(prevFonts => [...prevFonts, newFontOption]);
-        setTitleFont(newFontOption.family);
-        
-    } catch (err) {
-        console.error("Font loading error:", err);
-        setError("Không thể tải tệp font chữ. Vui lòng chọn một tệp hợp lệ (.ttf, .otf, .woff).");
-    } finally {
-        if (event.target) {
-            event.target.value = '';
-        }
-    }
-  };
-
-  const handleEnhanceClick = useCallback(async () => {
-    if (!originalFile || isLoading) return;
-    const validTitleParts = titleParts.filter(part => part.text.trim() !== '');
-    const isTitleEmpty = validTitleParts.length === 0;
+    // Always process image to apply correct aspect ratio, even if there's no title
+    imageToProcess = await applyTitle(imageToProcess, titleParts, fontFamily, subtitleOptions, aspectRatio);
     
-    if (backgroundStyle === 'upload' && !backgroundImageFile) {
-        setError('Vui lòng chọn một ảnh nền.');
-        return;
+    if (watermarkFile) {
+      imageToProcess = await applyWatermark(imageToProcess, watermarkFile, watermarkOpacity, watermarkPosition, watermarkSize);
     }
-     if (addTitle && isTitleEmpty) {
-      setError('Vui lòng nhập văn bản cho ít nhất một phần tiêu đề.');
+    
+    setFinalImage(imageToProcess);
+  }, [enhancedImage, titlePart1, titleColor1, titlePart2, titleColor2, subtitleText, subtitleColor, fontFamily, watermarkFile, watermarkOpacity, watermarkPosition, watermarkSize, aspectRatio]);
+
+  useEffect(() => {
+    if (enhancedImage) {
+      processImageFinalization();
+    }
+  }, [enhancedImage, processImageFinalization]);
+
+
+  const handleEnhance = async () => {
+    if (!imageFile) {
+      setError("Vui lòng chọn một hình ảnh để nâng cấp.");
       return;
     }
-    if (addTitle && addSubtitle && subtitleText.trim() === '') {
-        setError('Vui lòng nhập văn bản cho dòng mô tả.');
+    if (backgroundOptions.style === 'upload' && !backgroundImageFile) {
+        setError("Vui lòng tải lên ảnh nền khi chọn tùy chọn 'Nền tùy chỉnh'.");
         return;
     }
-    if (addWatermark && !watermarkFile) {
-        setError('Vui lòng chọn một ảnh watermark.');
-        return;
-    }
-
-    setIsLoading(true);
+    setLoading(true);
     setError(null);
-    setEnhancedImageUrl(null);
+    setEnhancedImage(null);
+    setFinalImage(null);
+    setLoadingMessage("AI đang xử lý hình ảnh của bạn...");
 
     try {
-       const backgroundOptions: BackgroundOptions = {
-        style: backgroundStyle,
-        color1: color1,
-        color2: color2,
-        backgroundImage: backgroundImageFile,
-      };
-      const enhancedImageBase64 = await enhanceImage(originalFile, backgroundOptions);
-      let finalImageUrl = `data:image/png;base64,${enhancedImageBase64}`;
-      
-      if (addTitle && !isTitleEmpty) {
-        const subtitleOptions: SubtitleOptions | undefined = 
-          addSubtitle && subtitleText.trim() !== ''
-            ? { text: subtitleText, color: subtitleColor }
-            : undefined;
-        finalImageUrl = await applyTitle(finalImageUrl, validTitleParts, titleFont, subtitleOptions);
-      }
-
-      if (addWatermark && watermarkFile) {
-        finalImageUrl = await applyWatermark(finalImageUrl, watermarkFile, watermarkOpacity, watermarkPosition, watermarkSize);
-      }
-
-      setEnhancedImageUrl(finalImageUrl);
+      const optionsWithImage = { ...backgroundOptions, backgroundImage: backgroundImageFile };
+      const base64Image = await enhanceImage(imageFile, optionsWithImage, aspectRatio);
+      setEnhancedImage(`data:image/png;base64,${base64Image}`);
+      incrementUsage(); // Increment usage on success
     } catch (err) {
-      console.error(err);
-      setError('Đã xảy ra lỗi khi nâng cấp ảnh. Vui lòng thử lại.');
+      setError(err instanceof Error ? err.message : "Đã xảy ra lỗi không xác định.");
+      setEnhancedImage(null);
+      setFinalImage(null);
     } finally {
-      setIsLoading(false);
+      setLoading(false);
+      setLoadingMessage('');
     }
-  }, [originalFile, isLoading, backgroundStyle, color1, color2, backgroundImageFile, addTitle, titleParts, titleFont, addSubtitle, subtitleText, subtitleColor, addWatermark, watermarkFile, watermarkOpacity, watermarkPosition, watermarkSize]);
-
-  const handleDownload = () => {
-    if (!enhancedImageUrl) return;
+  };
+  
+  const downloadImage = () => {
+    if (!finalImage) return;
     const link = document.createElement('a');
-    link.href = enhancedImageUrl;
-    const originalName = originalFile?.name.split('.').slice(0, -1).join('.') || 'image';
-    link.download = `${originalName}-enhanced.png`;
+    link.href = finalImage;
+    link.download = `enhanced-${imageFile?.name || 'image'}.png`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
   
-  const handleBackgroundStyleChange = (style: BackgroundOptions['style']) => {
-      setBackgroundStyle(style);
-      if (style !== 'upload') {
-          setBackgroundImageFile(null);
-          if (backgroundPreviewUrl) {
-              URL.revokeObjectURL(backgroundPreviewUrl);
-          }
-          setBackgroundPreviewUrl(null);
-      }
-  }
+  const fontOptions = ['Oswald', 'Roboto', 'Montserrat', 'Playfair Display', 'Noto Serif', 'Open Sans', 'Source Sans Pro', 'Pacifico', 'Be Vietnam Pro'];
 
-  const backgroundOptionsConfig = [
-    { id: 'default', label: 'Mặc Định' },
-    { id: 'solid', label: 'Màu Trơn' },
-    { id: 'gradient', label: 'Gradient' },
-    { id: 'blur', label: 'Làm Mờ Nền Gốc' },
-    { id: 'upload', label: 'Tải Lên Nền' },
-  ];
-  
-  const watermarkPositionOptions: { pos: WatermarkPosition, label: string }[] = [
-    { pos: 'topLeft', label: 'Trên Trái' },
-    { pos: 'topRight', label: 'Trên Phải' },
-    { pos: 'bottomLeft', label: 'Dưới Trái' },
-    { pos: 'bottomRight', label: 'Dưới Phải' }
-  ];
+  const ControlPanel: React.FC = () => (
+    <div className="bg-gray-800 p-6 rounded-lg shadow-xl space-y-6">
+      <div>
+        <h3 className="text-lg font-semibold mb-3 text-green-300">1. Tùy Chọn Nền</h3>
+        <select value={backgroundOptions.style} onChange={(e) => setBackgroundOptions(prev => ({...prev, style: e.target.value as BackgroundOptions['style']}))} className="w-full p-2 bg-gray-700 rounded border border-gray-600 focus:outline-none focus:ring-2 focus:ring-green-500">
+          <option value="default">Gradient Xanh Ngọc (Mặc định)</option>
+          <option value="solid">Màu trơn</option>
+          <option value="gradient">Gradient tùy chỉnh</option>
+          <option value="blur">Làm mờ nền gốc</option>
+          <option value="upload">Nền tùy chỉnh</option>
+        </select>
+        {(backgroundOptions.style === 'solid' || backgroundOptions.style === 'gradient') && (
+          <div className="flex items-center space-x-4 mt-3">
+            <input type="color" value={backgroundOptions.color1} onChange={(e) => setBackgroundOptions(prev => ({...prev, color1: e.target.value}))} className="w-10 h-10 bg-gray-700 rounded cursor-pointer" />
+            {backgroundOptions.style === 'gradient' &&
+              <input type="color" value={backgroundOptions.color2} onChange={(e) => setBackgroundOptions(prev => ({...prev, color2: e.target.value}))} className="w-10 h-10 bg-gray-700 rounded cursor-pointer" />
+            }
+          </div>
+        )}
+        {backgroundOptions.style === 'upload' && (
+          <div className="mt-3">
+            <label className="block text-sm font-medium text-gray-300 mb-1">Tải lên ảnh nền</label>
+            <input type="file" accept="image/*" onChange={e => setBackgroundImageFile(e.target.files ? e.target.files[0] : null)} className="w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-green-600 file:text-white hover:file:bg-green-700"/>
+          </div>
+        )}
+      </div>
 
+      <div>
+          <h3 className="text-lg font-semibold mb-3 text-cyan-300">2. Tỷ lệ ảnh</h3>
+          <select value={aspectRatio} onChange={(e) => setAspectRatio(e.target.value)} className="w-full p-2 bg-gray-700 rounded border border-gray-600 focus:outline-none focus:ring-2 focus:ring-cyan-500">
+              <option value="1:1">Vuông (1:1)</option>
+              <option value="4:3">Tiêu chuẩn (4:3)</option>
+              <option value="3:4">Dọc (3:4)</option>
+              <option value="16:9">Rộng (16:9)</option>
+              <option value="9:16">Story (9:16)</option>
+          </select>
+      </div>
 
-  return (
-    <div className="min-h-screen bg-gray-900 text-gray-100 flex flex-col items-center p-4 sm:p-6 md:p-8">
-       <input
-        ref={fileInputRef}
-        id="file-upload"
-        type="file"
-        className="hidden"
-        accept="image/png, image/jpeg, image/webp"
-        onChange={handleFileChange}
-      />
-      <div className="w-full max-w-6xl mx-auto">
-        <header className="text-center mb-8">
-          <h1 className="text-4xl sm:text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-600" style={{ fontWeight: 800 }}>
-            Trình Nâng Cấp Ảnh Sản Phẩm của Vong Tình
-          </h1>
-          <p className="mt-4 text-lg text-gray-400">
-            Tải lên ảnh sản phẩm của bạn và để AI biến nó thành một kiệt tác quảng cáo.
-          </p>
-        </header>
+       <div>
+        <h3 className="text-lg font-semibold mb-3 text-blue-300">3. Tùy Chỉnh Tiêu Đề</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <input type="text" placeholder="Phần 1 Tiêu đề" value={titlePart1} onChange={e => setTitlePart1(e.target.value)} className="w-full p-2 bg-gray-700 rounded border border-gray-600"/>
+            <input type="color" value={titleColor1} onChange={e => setTitleColor1(e.target.value)} className="w-full h-10 bg-gray-700 rounded cursor-pointer"/>
+            <input type="text" placeholder="Phần 2 Tiêu đề" value={titlePart2} onChange={e => setTitlePart2(e.target.value)} className="w-full p-2 bg-gray-700 rounded border border-gray-600"/>
+            <input type="color" value={titleColor2} onChange={e => setTitleColor2(e.target.value)} className="w-full h-10 bg-gray-700 rounded cursor-pointer"/>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+            <input type="text" placeholder="Phụ đề" value={subtitleText} onChange={e => setSubtitleText(e.target.value)} className="w-full p-2 bg-gray-700 rounded border border-gray-600"/>
+            <input type="color" value={subtitleColor} onChange={e => setSubtitleColor(e.target.value)} className="w-full h-10 bg-gray-700 rounded cursor-pointer"/>
+        </div>
+        <div className="mt-4">
+            <label className="block text-sm font-medium text-gray-300 mb-1">Font chữ</label>
+            <select value={fontFamily} onChange={e => setFontFamily(e.target.value)} className="w-full p-2 bg-gray-700 rounded border border-gray-600">
+                {fontOptions.map(font => <option key={font} value={font}>{font}</option>)}
+            </select>
+        </div>
+      </div>
 
-        <main className="flex flex-col gap-8">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-             <div className="flex flex-col items-center gap-4">
-                <ImageDisplay title="Ảnh Gốc" imageUrl={previewUrl}>
-                  <div 
-                    onClick={triggerFileUpload}
-                    role="button"
-                    aria-label="Tải lên ảnh gốc"
-                    className="flex flex-col items-center justify-center w-full h-full p-4 border-2 border-gray-600 border-dashed rounded-lg cursor-pointer bg-gray-800 hover:bg-gray-700 transition-colors">
-                    <UploadIcon />
-                    <p className="mb-2 text-sm text-gray-400"><span className="font-semibold">Nhấn để tải lên</span> hoặc kéo và thả</p>
-                    <p className="text-xs text-gray-500">PNG, JPG, WEBP (Tối đa 5MB)</p>
-                  </div>
-                </ImageDisplay>
-                {previewUrl && (
-                    <button
-                        onClick={triggerFileUpload}
-                        className="flex items-center justify-center px-6 py-2.5 font-semibold text-white bg-indigo-600 rounded-lg shadow-md hover:bg-indigo-700 transform transition-transform duration-300 hover:scale-105"
-                        aria-label="Tải lên một ảnh gốc khác trong khi giữ nguyên các cài đặt"
-                    >
-                        <UploadIcon className="w-6 h-6 mr-2" />
-                        Thử với ảnh khác
-                    </button>
-                )}
+      <div>
+        <h3 className="text-lg font-semibold mb-3 text-purple-300">4. Tùy Chỉnh Watermark</h3>
+        <input type="file" accept="image/png, image/svg+xml" onChange={e => setWatermarkFile(e.target.files ? e.target.files[0] : null)} className="w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-purple-600 file:text-white hover:file:bg-purple-700"/>
+        {watermarkFile && (
+          <div className="space-y-4 mt-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-300">Độ mờ: {Math.round(watermarkOpacity * 100)}%</label>
+              <input type="range" min="0" max="1" step="0.05" value={watermarkOpacity} onChange={e => setWatermarkOpacity(parseFloat(e.target.value))} className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"/>
             </div>
-            
-            <div className="flex flex-col items-center gap-4">
-              <ImageDisplay title="Ảnh Đã Nâng Cấp" imageUrl={enhancedImageUrl} isLoading={isLoading}>
-                  <div className="text-center text-gray-500">
-                      <p>Hình ảnh được nâng cấp sẽ xuất hiện ở đây.</p>
-                  </div>
-              </ImageDisplay>
-              {enhancedImageUrl && !isLoading && (
-                <button
-                  onClick={handleDownload}
-                  className="flex items-center justify-center px-6 py-3 font-semibold text-white bg-teal-600 rounded-lg shadow-md hover:bg-teal-700 transform transition-transform duration-300 hover:scale-105"
-                  aria-label="Tải xuống ảnh đã nâng cấp"
-                >
-                  <DownloadIcon />
-                  Tải Xuống Ảnh
-                </button>
-              )}
+             <div>
+              <label className="block text-sm font-medium text-gray-300">Kích thước: {Math.round(watermarkSize * 100)}%</label>
+              <input type="range" min="0.05" max="0.5" step="0.01" value={watermarkSize} onChange={e => setWatermarkSize(parseFloat(e.target.value))} className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"/>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-300">Vị trí</label>
+              <select value={watermarkPosition} onChange={e => setWatermarkPosition(e.target.value as WatermarkPosition)} className="w-full p-2 bg-gray-700 rounded border border-gray-600">
+                <option value="bottomRight">Dưới Cùng Bên Phải</option>
+                <option value="bottomLeft">Dưới Cùng Bên Trái</option>
+                <option value="topRight">Trên Cùng Bên Phải</option>
+                <option value="topLeft">Trên Cùng Bên Trái</option>
+              </select>
             </div>
           </div>
-          
-          {originalFile && (
-            <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-6 my-4 w-full max-w-4xl mx-auto">
-              <h3 className="text-xl font-bold mb-6 text-center text-gray-200">Chọn Phong Cách Nền</h3>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4 mb-6">
-                {backgroundOptionsConfig.map(({ id, label }) => (
-                  <button
-                    key={id}
-                    onClick={() => handleBackgroundStyleChange(id as BackgroundOptions['style'])}
-                    className={`px-4 py-2 rounded-lg font-semibold transition-all duration-200 ${
-                      backgroundStyle === id ? 'bg-purple-600 text-white shadow-lg' : 'bg-gray-700 hover:bg-gray-600'
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-              <div className="flex justify-center items-center gap-6 transition-opacity duration-300" style={{ opacity: backgroundStyle === 'solid' || backgroundStyle === 'gradient' ? 1 : 0, maxHeight: backgroundStyle === 'solid' || backgroundStyle === 'gradient' ? '100px' : '0', overflow: 'hidden' }}>
-                  { (backgroundStyle === 'solid' || backgroundStyle === 'gradient') && (
-                      <div className="flex items-center gap-2">
-                          <label htmlFor="color1" className="text-sm font-medium">Màu 1:</label>
-                          <input type="color" id="color1" value={color1} onChange={(e) => setColor1(e.target.value)} className="w-10 h-10 p-1 bg-gray-800 border border-gray-600 rounded-lg cursor-pointer" />
-                      </div>
-                  )}
-                  { backgroundStyle === 'gradient' && (
-                      <div className="flex items-center gap-2">
-                          <label htmlFor="color2" className="text-sm font-medium">Màu 2:</label>
-                          <input type="color" id="color2" value={color2} onChange={(e) => setColor2(e.target.value)} className="w-10 h-10 p-1 bg-gray-800 border border-gray-600 rounded-lg cursor-pointer" />
-                      </div>
-                  )}
-              </div>
-               {backgroundStyle === 'upload' && (
-                    <div className="mt-4 flex flex-col items-center transition-all duration-300">
-                        <label htmlFor="background-upload" className="cursor-pointer bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg transition-colors">
-                        Chọn Ảnh Nền
-                        </label>
-                        <input id="background-upload" type="file" className="hidden" accept="image/png, image/jpeg, image/webp" onChange={handleBackgroundFileChange} />
-                        {backgroundPreviewUrl && (
-                        <div className="mt-4">
-                            <p className="text-sm text-gray-400 mb-2">Xem trước nền:</p>
-                            <img src={backgroundPreviewUrl} alt="Background Preview" className="w-32 h-32 object-cover rounded-lg border-2 border-gray-600" />
-                        </div>
-                        )}
-                    </div>
-                )}
+        )}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="min-h-screen bg-gray-900 text-white p-4 sm:p-6 lg:p-8">
+      <div className="max-w-7xl mx-auto">
+        <header className="text-center mb-10">
+          <h1 className="text-4xl sm:text-5xl md:text-6xl font-extrabold tracking-tight">
+            <span className="bg-clip-text text-transparent bg-gradient-to-r from-green-400 to-blue-500">
+              Trình Nâng Cấp Ảnh Sản Phẩm
+            </span>
+            <span className="text-gray-400"> của Vong Tình</span>
+          </h1>
+          <p className="mt-4 text-lg text-gray-400 max-w-2xl mx-auto">
+            Một ứng dụng web để nâng cấp hình ảnh sản phẩm bằng AI, cải thiện ánh sáng, nền và chất lượng tổng thể để tạo ra hình ảnh quảng cáo cao cấp.
+          </p>
+          <div className="mt-6 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 text-gray-300 animate-fade-in">
+            <div className="text-center bg-gray-800/50 px-4 py-2 rounded-lg">
+              <p className="text-2xl font-bold text-green-400">{usageStats.today}</p>
+              <p className="text-sm">Hôm nay</p>
             </div>
-          )}
-
-          {originalFile && (
-            <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-6 my-4 w-full max-w-4xl mx-auto">
-                <h3 className="text-xl font-bold mb-4 text-center text-gray-200">Thêm Tiêu Đề (Tùy chọn)</h3>
-                 <div className="flex flex-col items-center gap-4">
-                    <div className="flex items-center">
-                        <input
-                            id="add-title-checkbox"
-                            type="checkbox"
-                            checked={addTitle}
-                            onChange={(e) => setAddTitle(e.target.checked)}
-                            className="w-5 h-5 text-purple-600 bg-gray-700 border-gray-600 rounded focus:ring-purple-500 focus:ring-2"
-                        />
-                        <label htmlFor="add-title-checkbox" className="ml-3 text-md font-medium text-gray-300">
-                            Bật Tiêu Đề
-                        </label>
-                    </div>
-
-                    {addTitle && (
-                         <div className="mt-2 w-full max-w-xl flex flex-col items-center gap-4">
-                            <div className="w-full flex items-end gap-2">
-                                <div className="flex-grow">
-                                    <label htmlFor="font-select" className="block mb-2 text-sm font-medium text-gray-300">Chọn Font Chữ:</label>
-                                    <select
-                                        id="font-select"
-                                        value={titleFont}
-                                        onChange={(e) => setTitleFont(e.target.value)}
-                                        className="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-purple-500 focus:border-purple-500 block w-full p-2.5"
-                                    >
-                                        {availableFonts.map(font => (
-                                            <option key={font.name} value={font.family} style={{ fontFamily: font.family }}>
-                                                {font.name}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label htmlFor="font-upload" className="cursor-pointer bg-gray-600 hover:bg-gray-500 text-white font-semibold py-2 px-4 rounded-lg transition-colors flex items-center justify-center h-[42px]">
-                                        Tải Font Lên
-                                    </label>
-                                    <input id="font-upload" type="file" className="hidden" accept=".ttf,.otf,.woff,.woff2" onChange={handleFontFileChange} />
-                                </div>
-                            </div>
-
-
-                            <div className="w-full space-y-3">
-                              {titleParts.map((part, index) => (
-                                <div key={part.id} className="w-full flex items-center gap-2 animate-fade-in">
-                                  <input
-                                      type="text"
-                                      value={part.text}
-                                      onChange={(e) => handleTitlePartChange(part.id, 'text', e.target.value)}
-                                      placeholder={`Phần ${index + 1}`}
-                                      className="flex-grow bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-purple-500 focus:border-purple-500 p-2.5"
-                                      aria-label={`Văn bản cho phần ${index + 1}`}
-                                  />
-                                  <input
-                                      type="color"
-                                      value={part.color}
-                                      onChange={(e) => handleTitlePartChange(part.id, 'color', e.target.value)}
-                                      className="w-10 h-10 p-1 bg-gray-800 border border-gray-600 rounded-lg cursor-pointer flex-shrink-0"
-                                      aria-label={`Chọn màu cho phần ${index + 1}`}
-                                  />
-                                  <button
-                                      onClick={() => removeTitlePart(part.id)}
-                                      disabled={titleParts.length <= 1}
-                                      className="flex-shrink-0 p-2.5 bg-red-600 hover:bg-red-700 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                                      aria-label={`Xóa phần ${index + 1}`}
-                                  >
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-white" viewBox="0 0 20 20" fill="currentColor">
-                                      <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clipRule="evenodd" />
-                                    </svg>
-                                  </button>
-                                </div>
-                              ))}
-                            </div>
-
-                            <button
-                                onClick={addTitlePart}
-                                className="mt-2 px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors"
-                            >
-                                + Thêm Phần Văn Bản
-                            </button>
-                            
-                            <hr className="w-full border-gray-600 my-4" />
-
-                            <div className="w-full">
-                                <div className="flex items-center mb-4">
-                                    <input
-                                        id="add-subtitle-checkbox"
-                                        type="checkbox"
-                                        checked={addSubtitle}
-                                        onChange={(e) => setAddSubtitle(e.target.checked)}
-                                        className="w-5 h-5 text-purple-600 bg-gray-700 border-gray-600 rounded focus:ring-purple-500 focus:ring-2"
-                                    />
-                                    <label htmlFor="add-subtitle-checkbox" className="ml-3 text-md font-medium text-gray-300">
-                                        Thêm Dòng Mô Tả
-                                    </label>
-                                </div>
-                                {addSubtitle && (
-                                    <div className="w-full flex items-center gap-2 animate-fade-in">
-                                        <input
-                                            type="text"
-                                            value={subtitleText}
-                                            onChange={(e) => setSubtitleText(e.target.value)}
-                                            placeholder="Mô tả ngắn về sản phẩm"
-                                            className="flex-grow bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-purple-500 focus:border-purple-500 p-2.5"
-                                            aria-label="Văn bản cho dòng mô tả"
-                                        />
-                                        <input
-                                            type="color"
-                                            value={subtitleColor}
-                                            onChange={(e) => setSubtitleColor(e.target.value)}
-                                            className="w-10 h-10 p-1 bg-gray-800 border border-gray-600 rounded-lg cursor-pointer flex-shrink-0"
-                                            aria-label="Chọn màu cho dòng mô tả"
-                                        />
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
-                </div>
+            <div className="text-center bg-gray-800/50 px-4 py-2 rounded-lg">
+              <p className="text-2xl font-bold text-blue-400">{usageStats.yesterday}</p>
+              <p className="text-sm">Hôm qua</p>
             </div>
-          )}
-
-          {originalFile && (
-            <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-6 my-4 w-full max-w-4xl mx-auto">
-                <h3 className="text-xl font-bold mb-4 text-center text-gray-200">Thêm Watermark (Tùy chọn)</h3>
-                <div className="flex flex-col items-center gap-4">
-                    <div className="flex items-center">
-                        <input
-                            id="add-watermark-checkbox"
-                            type="checkbox"
-                            checked={addWatermark}
-                            onChange={(e) => setAddWatermark(e.target.checked)}
-                            className="w-5 h-5 text-purple-600 bg-gray-700 border-gray-600 rounded focus:ring-purple-500 focus:ring-2"
-                        />
-                        <label htmlFor="add-watermark-checkbox" className="ml-3 text-md font-medium text-gray-300">
-                            Bật Watermark
-                        </label>
-                    </div>
-
-                    {addWatermark && (
-                        <div className="mt-2 flex flex-col items-center transition-all duration-300 w-full max-w-md gap-4">
-                            <label htmlFor="watermark-upload" className="cursor-pointer bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg transition-colors">
-                                Chọn Ảnh Watermark
-                            </label>
-                            <input id="watermark-upload" type="file" className="hidden" accept="image/png, image/jpeg, image/webp" onChange={handleWatermarkFileChange} />
-                            {watermarkPreviewUrl && (
-                                <div className="mt-2">
-                                    <p className="text-sm text-gray-400 mb-2">Xem trước watermark:</p>
-                                    <img src={watermarkPreviewUrl} alt="Watermark Preview" className="w-24 h-24 object-contain rounded-lg border-2 border-gray-600 bg-gray-900/50 p-1" />
-                                </div>
-                            )}
-                             <div className="w-full">
-                                <label htmlFor="watermark-opacity" className="block mb-2 text-sm font-medium text-gray-300">
-                                    Độ trong suốt: {Math.round(watermarkOpacity * 100)}%
-                                </label>
-                                <input
-                                    id="watermark-opacity"
-                                    type="range"
-                                    min="0"
-                                    max="1"
-                                    step="0.05"
-                                    value={watermarkOpacity}
-                                    onChange={(e) => setWatermarkOpacity(parseFloat(e.target.value))}
-                                    className="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer"
-                                    aria-label="Điều chỉnh độ trong suốt của watermark"
-                                />
-                            </div>
-                            
-                             <div className="w-full">
-                                <label htmlFor="watermark-size" className="block mb-2 text-sm font-medium text-gray-300">
-                                    Kích thước: {Math.round(watermarkSize * 100)}%
-                                </label>
-                                <input
-                                    id="watermark-size"
-                                    type="range"
-                                    min="0.05"
-                                    max="0.5"
-                                    step="0.01"
-                                    value={watermarkSize}
-                                    onChange={(e) => setWatermarkSize(parseFloat(e.target.value))}
-                                    className="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer"
-                                    aria-label="Điều chỉnh kích thước của watermark"
-                                />
-                            </div>
-
-                             <div className="w-full">
-                                <label className="block mb-3 text-sm font-medium text-gray-300 text-center">Vị trí Watermark</label>
-                                <div className="grid grid-cols-2 gap-3">
-                                    {watermarkPositionOptions.map(({ pos, label }) => (
-                                        <button
-                                            key={pos}
-                                            onClick={() => setWatermarkPosition(pos)}
-                                            className={`flex items-center justify-center px-4 py-2 rounded-lg font-semibold transition-all duration-200 text-sm ${
-                                                watermarkPosition === pos ? 'bg-purple-600 text-white shadow-lg' : 'bg-gray-700 hover:bg-gray-600'
-                                            }`}
-                                            aria-label={`Đặt watermark ở vị trí ${label}`}
-                                        >
-                                            <PositionIcon position={pos} />
-                                            {label}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-                        </div>
-                    )}
-                </div>
+            <div className="text-center bg-gray-800/50 px-4 py-2 rounded-lg">
+              <p className="text-2xl font-bold text-purple-400">{usageStats.last7Days}</p>
+              <p className="text-sm">7 ngày qua</p>
             </div>
-          )}
-
-          {error && (
-            <div className="bg-red-900/50 border border-red-500 text-red-300 px-4 py-3 rounded-lg text-center" role="alert">
-              <strong className="font-bold">Lỗi: </strong>
-              <span className="block sm:inline">{error}</span>
+            <div className="text-center bg-gray-800/50 px-4 py-2 rounded-lg">
+              <p className="text-2xl font-bold text-orange-400">{usageStats.thisMonth}</p>
+              <p className="text-sm">Tháng này</p>
             </div>
-          )}
+            <div className="text-center bg-gray-800/50 px-4 py-2 rounded-lg col-span-2 md:col-span-1 lg:col-span-1">
+              <p className="text-2xl font-bold text-cyan-400">{usageStats.total}</p>
+              <p className="text-sm">Tổng cộng</p>
+            </div>
+          </div>
+        </header>
 
-          <div className="flex justify-center mt-4">
-            <button
-              onClick={handleEnhanceClick}
-              disabled={!originalFile || isLoading || (backgroundStyle === 'upload' && !backgroundImageFile) || (addTitle && titleParts.every(p => p.text.trim() === '')) || (addWatermark && !watermarkFile) || (addTitle && addSubtitle && subtitleText.trim() === '')}
-              className="px-8 py-4 text-lg font-bold text-white bg-gradient-to-r from-purple-600 to-pink-600 rounded-lg shadow-lg hover:scale-105 transform transition-transform duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+        <main className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="lg:col-span-1 space-y-8">
+             <div 
+              onDrop={handleDrop} 
+              onDragOver={handleDragEvents} 
+              onDragEnter={handleDragEvents} 
+              onDragLeave={handleDragEvents}
+              className={`relative flex flex-col items-center justify-center w-full h-64 border-2 border-dashed rounded-lg cursor-pointer bg-gray-800 border-gray-600 hover:border-green-500 hover:bg-gray-700 transition-colors ${dragOver ? 'border-green-500 bg-gray-700' : ''}`}
             >
-              {isLoading ? 'Đang Xử Lý...' : 'Nâng Cấp Ảnh'}
+              <label htmlFor="dropzone-file" className="flex flex-col items-center justify-center w-full h-full">
+                  <UploadIcon />
+                  <p className="mb-2 text-sm text-gray-400"><span className="font-semibold">Nhấn để tải lên</span> hoặc kéo và thả</p>
+                  <p className="text-xs text-gray-500">PNG, JPG, WEBP (Tối đa 5MB)</p>
+                  {imageFile && <p className="mt-2 text-sm text-green-400 truncate max-w-full px-4">{imageFile.name}</p>}
+              </label>
+              <input id="dropzone-file" type="file" className="hidden" accept="image/*" onChange={handleFileChange} />
+            </div>
+            
+            <ControlPanel />
+
+            <button
+              onClick={handleEnhance}
+              disabled={loading || !imageFile}
+              className="w-full flex items-center justify-center bg-gradient-to-r from-green-500 to-blue-600 hover:from-green-600 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-lg text-lg shadow-lg transition-all duration-300 ease-in-out transform hover:scale-105"
+            >
+              {loading ? <><LoadingSpinner /> {loadingMessage}</> : '✨ Nâng Cấp Hình Ảnh'}
             </button>
+            {error && <div className="bg-red-800/50 border border-red-700 text-red-300 px-4 py-3 rounded-lg animate-fade-in" role="alert">{error}</div>}
+          </div>
+
+          <div className="lg:col-span-2 bg-gray-800 p-4 rounded-lg shadow-xl flex items-center justify-center min-h-[50vh]">
+            {finalImage ? (
+                <div className="animate-fade-in w-full">
+                    <img ref={finalImageRef} src={finalImage} alt="Enhanced Product" className="max-w-full max-h-[70vh] mx-auto rounded-lg shadow-2xl" />
+                    <button onClick={downloadImage} className="mt-4 w-full flex items-center justify-center bg-gray-600 hover:bg-gray-500 text-white font-bold py-3 px-4 rounded-lg transition-colors">
+                        <DownloadIcon />
+                        Tải Xuống Hình Ảnh
+                    </button>
+                </div>
+            ) : (
+              <div className="text-center text-gray-500">
+                <p>Hình ảnh đã nâng cấp sẽ xuất hiện ở đây</p>
+              </div>
+            )}
           </div>
         </main>
       </div>
